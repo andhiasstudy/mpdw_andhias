@@ -1,0 +1,279 @@
+---
+title: "Penanganan Autokorelasi Metode Cochrane-Orcutt dan Metode Hildreth-Lu (Soal Tugas Praktikum 2 No 1)"
+author: "Andhias Abdillah Ridho"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown
+---
+
+# Load Data
+
+```{r}
+library(readxl)
+data <- read_xlsx("C:\\Users\\LENOVO\\Downloads\\data_market_share_price.xlsx")
+data
+```
+
+```{r}
+library(dplyr)
+library(TTR)
+library(forecast)
+library(lmtest) #digunakan untuk uji formal pendeteksian autokorelasi
+library(orcutt) #untuk membuat model regresi Cochrane-Orcutt
+library(HoRM) #untuk membuat model regresi Hildreth-Lu
+```
+
+```{r}
+model <- lm(`Price` ~ `Market share`, data = data)
+summary(model)
+```
+
+# Pengujian Asumsi
+```{r}
+library(lmtest)
+dwtest(model)
+```
+Pada uji Durbin-Watson didapatkan nilai p-value sebesar 0.01099, karena nilai p-value < 0,05 maka tolak H0 sehingga data tersebut memiliki autokorelasi pada residualnya.
+
+# Penanganan Autokorelasi
+## Metode Cochrane-Orcutt
+### Menggunakan library(orcutt)
+```{r}
+#Penanganan Autokorelasi Cochrane-Orcutt
+library(orcutt)
+modelCO<-cochrane.orcutt(model)
+modelCO
+```
+
+Hasil keluaran model setelah dilakukan penanganan adalah sebagai berikut:
+$$ Price = 1.082996 - 0.037451 * Market share $$
+
+```{r}
+summary(modelCO)
+```
+
+Hasil pengujian menunjukkan bahwa setelah dilakukan transformasi, nilai statistik Durbin-Watson meningkat dari 1.15126 menjadi 2.09351, dengan p-value yang berubah dari 1.099e-02 menjadi 5.266e-01. Nilai p-value setelah transformasi lebih besar dari taraf signifikansi 5% (0,05), sehingga gagal tolak H₀. Sehingga, dapat disimpulkan bahwa tidak terdapat cukup bukti untuk menyatakan bahwa residual mengalami autokorelasi positif pada taraf signifikansi 5%.
+
+Berdasarkan hasil tersebut, transformasi dilakukan untuk menangani masalah autokorelasi pada residual. Setelah transformasi, diperoleh nilai Durbin-Watson sebesar 2,09351 dengan p-value 5.266e-01, sehingga asumsi independensi residual dapat dianggap terpenuhi.
+
+Selanjutnya akan dilakukan transformasi atau penanganan autokorelasi secara manual dengan syntax berikut ini.
+
+### Transformasi Manual Metode Cochrane-Orcutt
+```{r}
+#Transformasi Manual
+# Nilai rho
+rho <- modelCO$rho
+
+# Transformasi variabel dependen
+Price_trans <- data$Price[-1] - rho * data$Price[-nrow(data)]
+
+# Transformasi variabel independen
+Marketshare_trans <- data$`Market share`[-1] - rho * data$`Market share`[-nrow(data)]
+
+# Model hasil transformasi
+modelCOmanual <- lm(
+  Price_trans ~ Marketshare_trans)
+
+summary(modelCOmanual)
+```
+
+```{r}
+# Koefisien hasil transformasi
+coef_trans <- coefficients(modelCOmanual)
+
+# Intersep kembali ke persamaan awal
+b0 <- coef_trans[1] / (1 - rho)
+
+# Koefisien variabel independen
+b1  <- coef_trans[2]
+b2  <- coef_trans[3]
+
+# Menampilkan persamaan regresi
+cat(
+  "Y = ", round(b0,6),
+  " + ", round(b1,6),  "(Period)",
+  sep = ""
+)
+```
+Menghasilkan persamaan yang sama dengan modelCO pada library(orcutt).
+
+### Cek Autokorelasi
+```{r}
+#Deteksi autokorelasi
+lmtest::dwtest(modelCO, alternative = 'two.sided')
+```
+
+p-value = 0.9468 > 0,05. maka tidak ada autokorelasi dalam tingkat kepercayaan 5%. Maka, metode Cochrane-Orcutt mampu mengatasi permasalahan autokorelasi.
+
+## Metode Hildreth-Lu
+```{r}
+# FUNGSI HILDRETH-LU
+
+hildreth.lu.func <- function(r, model) {
+  
+  # Matriks X tanpa intercept
+  X <- model.matrix(model)[, -1, drop = FALSE]
+  
+  # Variabel Y
+  Y <- model.response(model.frame(model))
+  
+  # Jumlah observasi
+  n <- length(Y)
+  
+  # Transformasi
+  Y_trans <- Y[2:n] - r * Y[1:(n-1)]
+  
+  X_trans <- X[2:n, ] - r * X[1:(n-1), ]
+  
+  # Data hasil transformasi
+  data_trans <- data.frame(
+    Y_trans,
+    X_trans
+  )
+  
+  # Model hasil transformasi
+  lm(Y_trans ~ ., data = data_trans)
+}
+```
+
+```{r}
+rho_grid <- seq(0.1, 1, by = 0.01)
+
+tab <- data.frame(
+  rho = rho_grid,
+  SSE = sapply(rho_grid, function(r) {
+    deviance(hildreth.lu.func(r, model))
+  })
+)
+
+# Menampilkan rho dengan SSE minimum
+tab[which.min(tab$SSE), ]
+```
+
+Pertama-tama akan dicari di mana kira-kira ρ yang menghasilkan SSE minimum. Pada hasil di atas terlihat ρ minimum ketika 0.41. Namun, hasil tersebut masih kurang teliti sehingga akan dicari kembali ρ yang lebih optimum dengan ketelitian yang lebih. Jika sebelumnya jarak antar ρ yang dicari adalah 0.01, kali ini jarak antar ρ adalah 0.00001 dan dilakukan pada selang 0.3 sampai dengan 0,5.
+
+```{r}
+rho_grid2 <- seq(0.30, 0.50, by = 0.00001)
+
+tab2 <- data.frame(
+  rho = rho_grid2,
+  SSE = sapply(rho_grid2, function(r) {
+    deviance(hildreth.lu.func(r, model))
+  })
+)
+
+# rho optimum
+idx_opt <- which.min(tab2$SSE)
+
+rho_HL <- tab2$rho[idx_opt]
+sse_HL <- tab2$SSE[idx_opt]
+
+rho_HL
+sse_HL
+```
+```{r}
+plot(
+  tab2$rho,
+  tab2$SSE,
+  type = "l",
+  xlab = expression(rho),
+  ylab = "SSE",
+  main = "Hubungan SSE dengan Nilai Rho"
+)
+
+abline(
+  v = rho_HL,
+  lty = 2,
+  col = "red"
+)
+
+points(
+  rho_HL,
+  sse_HL,
+  pch = 19
+)
+
+text(
+  rho_HL,
+  sse_HL,
+  labels = paste0("rho = ", round(rho_HL, 5)),
+  pos = 4
+)
+```
+Perhitungan yang dilakukan aplikasi R menunjukkan bahwa nilai ρ optimum, yaitu saat SSE terkecil terdapat pada nilai ρ=0.41031. Hal tersebut juga ditunjukkan pada plot. Selanjutnya, model dapat didapatkan dengan mengevaluasi nilai ρ ke dalam fungsi hildreth.lu.func, serta dilanjutkan dengan pengujian autokorelasi dengan uji Durbin-Watson. Namun, setelah pengecekan tersebut tidak lupa koefisien regresi tersebut digunakan untuk transformasi balik. Persamaan hasil transformasi itulah yang menjadi persamaan sesungguhnya.
+ 
+```{r}
+modelHL <- hildreth.lu.func(
+  rho_HL,
+  model
+)
+
+summary(modelHL)
+```
+
+```{r}
+# TRANSFORMASI BALIK HILDRETH-LU
+
+coef_HL <- coef(modelHL)
+
+b0_HL <- coef_HL[1] / (1 - rho_HL)
+b1_HL <- coef_HL[2]
+b2_HL <- coef_HL[3]
+
+cat(
+  "Price = ",
+  round(b0_HL, 6),
+  " + ", round(b1_HL, 6), "(Period)",
+  sep = ""
+)
+
+```
+
+```{r}
+#Deteksi autokorelasi
+lmtest::dwtest(modelHL, alternative = 'two.sided')
+```
+
+Nilai p-value = 0.9468 < 0,05. maka tidak ada autokorelasi dalam tingkat kepercayaan 5%. Maka, metode Hilderth-Lu mampu mengatasi permasalahan autokorelasi.
+
+```{r}
+#Perbandingan
+# SSE
+sseModelAwal <- deviance(model)
+sseModelCO   <- deviance(modelCOmanual)
+sseModelHL   <- deviance(modelHL)
+
+# Banyak observasi
+n <- nrow(data)
+
+# MSE
+mseModelAwal <- sseModelAwal / n
+mseModelCO   <- sseModelCO / n
+mseModelHL   <- sseModelHL / n
+
+# Tabel perbandingan
+akurasi <- matrix(
+  c(
+    sseModelAwal, sseModelCO, sseModelHL,
+    mseModelAwal, mseModelCO, mseModelHL
+  ),
+  nrow = 2,
+  byrow = TRUE
+)
+
+colnames(akurasi) <- c(
+  "Model Awal",
+  "Model Cochrane-Orcutt",
+  "Model Hildreth-Lu"
+)
+
+rownames(akurasi) <- c("SSE", "MSE")
+
+akurasi
+```
+
+Berdasarkan hasil tersebut dapat diketahui bahwa hasil penanganan autokorelasi dengan metode Cochrane-Orcutt dan Hildreth-Lu memiliki SSE yang sama, sebesar 0.0041287630 dan lebih baik dibandingkan model awal ketika autokorelasi masih terjadi, yaitu sebesar 0.0053332267.
+
+# Simpulan
+Autokorelasi yang terdapat pada data yang dianalisis terjadi akibat adanya korelasi di antara unsur penyusunnya. Adanya autokorelasi menyebabkan model regresi kurang baik karena akan meingkatkan galatnya. Autokorelasi dapat dideteksi secara eksploratif melalui uji formal Durbin-Watson. Kemudian, autokorelasi tersebut dapat ditangani dengan metode Cochrane-Orcutt dan Hildreth-Lu. Kedua metode menghasilkan nilai SSE yang sama dan lebih kecil dari model awalnya, artinya keduanya baik untuk digunakan.
+
