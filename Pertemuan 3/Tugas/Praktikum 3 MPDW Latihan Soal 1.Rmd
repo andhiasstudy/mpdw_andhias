@@ -1,0 +1,366 @@
+---
+title: "Tugas Praktikum 3 MPDW: Model Regresi dengan Peubah Lag"
+author: "Andhias Abdillah Ridho"
+date: "2026-09-03"
+output: 
+  rmdformats::readthedown
+---
+
+# Packages
+```{r}
+library(dLagM)
+library(dynlm) #data harus timeseries
+library(MLmetrics) #MAPE
+library(lmtest)
+library(car)
+library(zoo)
+library(dplyr)
+library(readxl)
+library(readr)
+```
+
+# Data
+```{r}
+data <- read_xlsx("C:\\Users\\LENOVO\\Downloads\\data_market_share_price(1).xlsx")
+str(data)
+head(data)
+```
+
+Peubah yang dijadikan sebagi peubah bebas (xt) adalah Market share dan peubah responnya (yt) adalah Price.
+
+```{r}
+t <- data$Period
+t <- tibble::num(1:20)
+xt <- data$`Market share`
+yt <- data$Price
+xt <- as.vector(xt)
+yt <- as.vector(yt)
+```
+
+```{r}
+data1 <- cbind(t, xt, yt)
+data1 <- as.data.frame(data1)
+str(data1)
+head(data1)
+```
+
+```{r}
+#SPLIT DATA
+train<-data1[1:15,]
+test<-data1[16:20,]
+train <- as.data.frame(train)
+test <- as.data.frame(test)
+```
+
+```{r}
+#data time series
+train.ts<-ts(train)
+test.ts<-ts(test)
+data.ts<-ts(data1)
+```
+
+
+# Eksplorasi Data
+## Plot Time Series
+```{r}
+data.ts1 <- ts(yt)
+plot(data.ts1, main = " Time Series Plot of Daily Delhi Climate", xlab = "Periode", ylab ="Price")
+points(data.ts1)
+```
+Berdasarkan plot time series di atas, dapat dilihat bahwa peubah Price memiliki pola turun.
+
+## Korelasi Peubah X dan Y
+```{r}
+corrplot::corrplot(corr=cor(data1), method="number", type="upper")
+```
+
+```{r}
+cor(xt, yt)
+```
+
+## Scatter Plot X dan Y
+```{r}
+plot(xt, yt, pch = 20, col = "blue", main = "Scatter Plot Market share vs Price")
+```
+Berdasarkan corrplot dan scatter plot di atas, dapat dilihat bahwa hubungan peubah Price (xt) dan peubah Market share (yt) memiliki hubungan yang negatif kuat yaitu dengan nilai korelasi sebesar -0.9752564, artinya dengan kenaikan Market share, Price cenderung menurun.
+
+# Model KOYCK
+## Pemodelan KOYCK
+```{r}
+model.koyck <- dLagM :: koyckDlm(x=train$xt , y =train$yt)
+summary(model.koyck)
+```
+
+## AIC dan BIC
+```{r}
+AIC(model.koyck)
+BIC(model.koyck)
+```
+## Forecasting
+```{r}
+#ramalan
+(fore.koyck <- forecast(model = model.koyck, x=test$xt, h=nrow(test)))
+```
+## Akurasi
+```{r}
+mape.koyck <- MAPE(fore.koyck$forecasts, test$yt)
+mape.koyck #data test
+```
+```{r}
+#akurasi data training
+GoF(model.koyck)
+```
+
+# Regression with Distributed Lag
+## Pemodelan Regression with Distributed Lag (Lag = 2)
+```{r}
+model.dlm = dLagM::dlm(x = train$xt,y = train$yt , q = 2)
+summary(model.dlm)
+```
+## AIC dan BIC
+```{r}
+AIC(model.dlm)
+BIC(model.dlm)
+```
+## Peramalan dan Akurasi
+```{r}
+fore.dlm <- forecast(model = model.dlm, x=test$xt, h=5)
+fore.dlm
+```
+```{r}
+mape.dlm <- MAPE(fore.dlm$forecasts, test$yt)
+mape.dlm
+```
+```{r}
+#akurasi data training
+GoF(model.dlm)
+```
+
+
+## Lag Optimum
+```{r}
+#penentuan lag optimum 
+finiteDLMauto(formula = yt ~ xt,
+              data = data.frame(train), q.min = 1, q.max = 5 ,
+              model.type = "dlm", error.type = "AIC", trace = TRUE) ##q max lag maksimum
+```
+
+## Pemodelan Lag Optimum
+```{r}
+#model dlm dengan lag optimum
+model.dlm2 = dLagM::dlm(x = train$xt,y = train$yt , q = 1) #terdapat lag yang tidak signifikan sehingga dapat dikurangi jumlah lagnya 
+summary(model.dlm2)
+```
+## AIC dan BIC
+```{r}
+AIC(model.dlm2)
+BIC(model.dlm2)
+```
+## Akurasi dan Peramalan
+```{r}
+#peramalan dan akurasi
+fore.dlm2 <- forecast(model = model.dlm2, x=test$xt, h=5)
+
+#akurasi data test
+mape.dlm2<- MAPE(fore.dlm2$forecasts, test$yt)
+mape.dlm2
+```
+```{r}
+#akurasi data training
+GoF(model.dlm2)
+```
+
+
+# Model Autoregressive / Dynamic Regression
+## Pemodelan Model Autoregressive
+```{r}
+#MODEL AUTOREGRESSIVE 
+#library(dLagM)
+model.ardl = ardlDlm(x = train$xt, y = train$yt, p = 1 , q = 1) #p:lag x, q:lag y
+#model untuk p=1, q=1: yt=b0+b1yt-1+b2xt+b3xt-1
+#model untuk p=2, q=3: yt=b0+b1yt-1+b2yt-2+b3xt+b4xt-1+b5xt-2
+
+summary(model.ardl)
+```
+## AIC dan BIC
+```{r}
+AIC(model.ardl)
+BIC(model.ardl)
+```
+
+```{r}
+model.ardl <- ardlDlm(formula = yt ~ xt, 
+                         data = train,p = 1 , q = 1)
+summary(model.ardl)
+```
+```{r}
+AIC(model.ardl)
+BIC(model.ardl)
+```
+
+## Ramalan dan Akurasi
+```{r}
+fore.ardl <- forecast(model = model.ardl, x=test$xt, h=5)
+fore.ardl
+```
+```{r}
+mape.ardl <- MAPE(fore.ardl$forecasts, test$yt)
+mape.ardl
+```
+```{r}
+#akurasi data training
+GoF(model.ardl)
+```
+
+## Lag Optimum
+```{r}
+data <- data.frame(
+  yt = data$`Market share`,
+  xt = data$Price
+)
+
+model.ardl.opt <- ardlBoundOrders(
+  data = data,
+  ic = "AIC",
+  formula = yt ~ xt
+)
+
+model.ardl.opt
+```
+
+```{r}
+min_p=c()
+for(i in 1:6){
+  min_p[i]=min(model.ardl.opt$Stat.table[[i]])
+}
+q_opt=which(min_p==min(min_p, na.rm = TRUE))
+p_opt=which(model.ardl.opt$Stat.table[[q_opt]] == 
+              min(model.ardl.opt$Stat.table[[q_opt]], na.rm = TRUE))
+data.frame("q_optimum" = q_opt, "p_optimum" = p_opt, 
+           "AIC"=model.ardl.opt$min.Stat)
+```
+
+# Pemodelan DLM & ARDL dengan Library dynlm
+```{r}
+#sama dengan model dlm q=1
+cons_lm1 <- dynlm(yt ~ xt+L(xt),data = train.ts)
+
+#sama dengan model ardl p=1 q=0
+cons_lm2 <- dynlm(yt ~ xt+L(yt),data = train.ts)
+
+#sama dengan ardl p=1 q=1
+cons_lm3 <- dynlm(yt ~ xt+L(xt)+L(yt),data = train.ts)
+
+#sama dengan dlm p=2
+cons_lm4 <- dynlm(yt ~ xt+L(xt)+L(xt,2),data = train.ts)
+```
+
+## Ringkasan Model
+```{r}
+summary(cons_lm1)
+summary(cons_lm2)
+summary(cons_lm3)
+summary(cons_lm4)
+```
+# SSE
+```{r}
+deviance(cons_lm1)
+deviance(cons_lm2)
+deviance(cons_lm3)
+deviance(cons_lm4)
+```
+Berdasarkan output di atas, model yang memiliki nilai SSE terendah yaitu cons_lm3
+
+# Uji Encomptest
+```{r}
+#uji model
+if(require("lmtest")) encomptest(cons_lm1, cons_lm2)
+```
+## Uji Autokorelasi Residual
+```{r}
+#durbin watson
+dwtest(cons_lm1)
+#durbin watson
+dwtest(cons_lm2)
+#durbin watson
+dwtest(cons_lm3)
+#durbin watson
+dwtest(cons_lm4)
+```
+Berdasarkan output di atas, pengujian non-autokorelasi dengan Durbin-Watson test semua model memiliki p-value > alpha, sehingga tidak tolak H0. Artinya semua model tidak terdapat autokorelasi.
+
+## Uji Heterogenitas
+```{r}
+bptest(cons_lm1)
+bptest(cons_lm2)
+bptest(cons_lm3)
+bptest(cons_lm4)
+```
+Berdasarkan output di atas, pengujian non-autokorelasi dengan Breusch-Pagan test semua model memiliki p-value > alpha, sehingga tidak tolak H0. Artinya semua model tidak terdapat heterogenitas.
+
+## Uji Normalitas
+```{r}
+shapiro.test(residuals(cons_lm1))
+shapiro.test(residuals(cons_lm2))
+shapiro.test(residuals(cons_lm3))
+shapiro.test(residuals(cons_lm4))
+```
+Berdasarkan output di atas, pengujian normalitas dengan Shapiro-Wilk normality test semua model memiliki p-value > alpha, sehingga tak tolak H0. Artinya semua model memiliki sisaan yang berdistribusi normal.
+
+# Perbandingan Model
+```{r}
+akurasi <- matrix(c(mape.koyck, mape.dlm, mape.dlm2, mape.ardl))
+row.names(akurasi)<- c("Koyck","DLM 1","DLM 2","Autoregressive")
+colnames(akurasi) <- c("MAPE")
+akurasi
+```
+# Plot
+```{r}
+# Plot Perbandingan Model
+par(mfrow = c(1,1))
+
+# Tentukan batas sumbu Y berdasarkan data aktual dan hasil ramalan
+y_all <- c(
+  test$yt,
+  fore.koyck$forecasts,
+  fore.dlm$forecasts,
+  fore.dlm2$forecasts,
+  fore.ardl$forecasts
+)
+
+# Plot data aktual
+plot(test$xt, test$yt,
+     type = "b",
+     col = "black",
+     ylim = range(y_all, na.rm = TRUE),
+     xlab = "Market Share",
+     ylab = "Price",
+     main = "Perbandingan Hasil Peramalan")
+
+# Koyck
+points(test$xt, fore.koyck$forecasts, col = "red")
+lines(test$xt, fore.koyck$forecasts, col = "red")
+
+# DLM q = 2
+points(test$xt, fore.dlm$forecasts, col = "blue")
+lines(test$xt, fore.dlm$forecasts, col = "blue")
+
+# DLM q = 1
+points(test$xt, fore.dlm2$forecasts, col = "orange")
+lines(test$xt, fore.dlm2$forecasts, col = "orange")
+
+# ARDL
+points(test$xt, fore.ardl$forecasts, col = "green")
+lines(test$xt, fore.ardl$forecasts, col = "green")
+
+# Legenda
+legend("topleft",
+       legend = c("Aktual", "Koyck", "DLM 1", "DLM 2", "Autoregressive"),
+       lty = 1,
+       col = c("black", "red", "blue", "orange", "green"),
+       cex = 0.8)
+```
+
+# Simpulan 
+Berdasarkan perbangingan keakuratan ramalan, model yang terbaik yaitu model autoregressive karena model tersebut memiliki nilai MAPE terkecil.
+
