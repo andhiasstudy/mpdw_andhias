@@ -1,0 +1,408 @@
+---
+title: "Proses AR(2)"
+author: "Andhias Abdillah Ridho"
+date: "2026-09-22"
+output: 
+  rmdformats::readthedown
+---
+
+# Membangkitkan Model AR(2) dengan \(\phi_1=0.5\) dan \(\phi_2=0.2\) sebanyak 300 data
+
+Model AR(2) yang digunakan adalah:
+
+$$ Y_t = \phi_1Y_{t-1}+\phi_2Y_{t-2}+Z_t $$
+
+dengan:
+
+$$ Y_t=0.5Y_{t-1}+0.2Y_{t-2}+Z_t $$
+
+dengan \(Z_t\sim N(0,1)\).
+
+## Manual
+
+```{r}
+# Seed agar hasil dapat direplikasi
+set.seed(123)
+
+# Parameter
+n <- 300
+phi1 <- 0.5
+phi2 <- 0.2
+
+# Burn-in agar pengaruh nilai awal berkurang
+burn_in <- 100
+N <- n + burn_in
+
+# Bangkitkan error/residual Z_t
+z <- rnorm(N)
+
+# Menyediakan tempat untuk data AR(2)
+y <- numeric(N)
+
+# Nilai awal
+y[1] <- z[1]
+y[2] <- phi1 * y[1] + z[2]
+
+# Membentuk model AR(2)
+for (t in 3:N) {
+  y[t] <- phi1 * y[t-1] +
+    phi2 * y[t-2] +
+    z[t]
+}
+
+# Ambil 300 data setelah burn-in
+x_manual <- y[(burn_in + 1):N]
+
+# Lihat 10 data pertama
+head(x_manual, 10)
+```
+## `(arima.sim)`
+
+```{r}
+set.seed(123)
+
+# Bangkitkan AR(2)
+x_arima <- arima.sim(
+  model = list(ar = c(0.5, 0.2)),
+  n = 300
+)
+
+# Lihat 10 data pertama
+head(x_arima, 10)
+```
+
+# Membuat Plot Time Series, ACF, PACF dan EACF
+## Plot time series
+```{r}
+plot(
+  ts(x_manual),
+  main = "Simulasi Model AR(2) - Manual",
+  ylab = expression(Y[t]),
+  xlab = "Waktu"
+)
+
+plot(
+  ts(x_arima),
+  main = "Simulasi Model AR(2) - arima.sim",
+  ylab = expression(Y[t]),
+  xlab = "Waktu"
+)
+```
+
+
+Berdasarkan plot time series Simulasi Model AR(2) - Manual dan Simulasi Model AR(2) - arima.sim, data berfluktuasi di sekitar nilai rata-rata yang relatif konstan dan tidak menunjukkan adanya tren naik atau turun yang sistematis. Penyebaran data juga relatif stabil sepanjang waktu sehingga secara visual data dapat dianggap stasioner.
+
+## Plot ACF
+
+```{r}
+acf(
+  x_manual,
+  main = "ACF AR(2) - Manual"
+)
+
+acf(
+  x_arima,
+  main = "ACF AR(2) - arima.sim"
+)
+```
+
+Pada model AR(2), nilai ACF cenderung meluruh secara bertahap (tailing off) menuju nol. Pola tersebut merupakan salah satu karakteristik model AR.
+
+## Plot PACF
+```{r}
+pacf(
+  x_manual,
+  main = "PACF AR(2) - Manual"
+)
+
+pacf(
+  x_arima,
+  main = "PACF AR(2) - arima.sim"
+)
+```
+
+Pada PACF, terdapat spike yang signifikan pada lag 1 dan lag 2, kemudian nilai PACF setelah lag 2 cenderung berada di sekitar nol. Pola cut-off setelah lag 2 merupakan karakteristik yang digunakan untuk mengidentifikasi model AR(2).
+
+## Plot EACF
+```{r}
+# Memanggil package TSA
+library(TSA)
+
+eacf(x_manual)
+eacf(x_arima)
+```
+Berdasarkan EACF, pola segitiga dari simbol o digunakan untuk membantu menentukan orde model ARMA. Untuk data yang dibangkitkan dari AR(2), pola EACF diharapkan menunjukkan indikasi orde AR sekitar 2 dengan orde MA mendekati 0.
+
+# Membuat scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1, 𝑌𝑡 dengan 𝑌𝑡−2 serta 𝑌𝑡dengan 𝑌𝑡−3
+
+## Scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1
+
+### Manual
+```{r}
+plot(
+  x_manual[1:(length(x_manual)-1)],
+  x_manual[2:length(x_manual)],
+  main = expression(Y[t] ~ "vs" ~ Y[t-1]),
+  xlab = expression(Y[t-1]),
+  ylab = expression(Y[t]),
+  pch = 19
+)
+
+abline(
+  lm(
+    x_manual[2:length(x_manual)] ~
+      x_manual[1:(length(x_manual)-1)]
+  ),
+  lwd = 2
+)
+```
+
+### `(arima.sim)`
+```{r}
+plot(
+  x_arima[1:(length(x_arima)-1)],
+  x_arima[2:length(x_arima)],
+  main = expression(Y[t] ~ "vs" ~ Y[t-1]),
+  xlab = expression(Y[t-1]),
+  ylab = expression(Y[t]),
+  pch = 19
+)
+
+abline(
+  lm(
+    x_arima[2:length(x_arima)] ~
+      x_arima[1:(length(x_arima)-1)]
+  ),
+  lwd = 2
+)
+```
+
+## Scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−2
+
+### Manual
+```{r}
+plot(
+  x_manual[1:(length(x_manual)-2)],
+  x_manual[3:length(x_manual)],
+  main = expression(Y[t] ~ "vs" ~ Y[t-2]),
+  xlab = expression(Y[t-2]),
+  ylab = expression(Y[t]),
+  pch = 19
+)
+
+abline(
+  lm(
+    x_manual[3:length(x_manual)] ~
+      x_manual[1:(length(x_manual)-2)]
+  ),
+  lwd = 2
+)
+```
+
+### `(arima.sim)`
+```{r}
+plot(
+  x_arima[1:(length(x_arima)-2)],
+  x_arima[3:length(x_arima)],
+  main = expression(Y[t] ~ "vs" ~ Y[t-2]),
+  xlab = expression(Y[t-2]),
+  ylab = expression(Y[t]),
+  pch = 19
+)
+
+abline(
+  lm(
+    x_arima[3:length(x_arima)] ~
+      x_arima[1:(length(x_arima)-2)]
+  ),
+  lwd = 2
+)
+```
+
+## Scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−3
+
+### Manual
+```{r}
+plot(
+  x_manual[1:(length(x_manual)-3)],
+  x_manual[4:length(x_manual)],
+  main = expression(Y[t] ~ "vs" ~ Y[t-3]),
+  xlab = expression(Y[t-3]),
+  ylab = expression(Y[t]),
+  pch = 19
+)
+
+abline(
+  lm(
+    x_manual[4:length(x_manual)] ~
+      x_manual[1:(length(x_manual)-3)]
+  ),
+  lwd = 2
+)
+```
+
+### `(arima.sim)`
+```{r}
+plot(
+  x_arima[1:(length(x_arima)-3)],
+  x_arima[4:length(x_arima)],
+  main = expression(Y[t] ~ "vs" ~ Y[t-3]),
+  xlab = expression(Y[t-3]),
+  ylab = expression(Y[t]),
+  pch = 19
+)
+
+abline(
+  lm(
+    x_arima[4:length(x_arima)] ~
+      x_arima[1:(length(x_arima)-3)]
+  ),
+  lwd = 2
+)
+```
+
+# Mengitung autokorelasi masing masing baik dari data bangkitan maupun secara teoritis
+
+## Autokorelasi dari data bangkitan
+
+### Manual
+```{r}
+acf_manual <- acf(
+  x_manual,
+  lag.max = 10,
+  plot = FALSE
+)
+
+acf_manual$acf
+```
+### `(arima.sim)`
+```{r}
+acf_arima <- acf(
+  x_arima,
+  lag.max = 10,
+  plot = FALSE
+)
+
+acf_arima$acf
+```
+## Autokorelasi teoritis AR(2)
+
+```{r}
+# Parameter AR(2)
+phi1 <- 0.5
+phi2 <- 0.2
+
+# Banyak lag
+lag_max <- 10
+
+# Menyediakan tempat untuk ACF teoritis
+acf_theoretical <- numeric(lag_max + 1)
+
+# rho(0)
+acf_theoretical[1] <- 1
+
+# rho(1)
+acf_theoretical[2] <- phi1 / (1 - phi2)
+
+# rho(2)
+acf_theoretical[3] <- phi1 * acf_theoretical[2] + phi2
+
+# rho(k), k >= 3
+for (k in 3:lag_max) {
+  acf_theoretical[k + 1] <-
+    phi1 * acf_theoretical[k] +
+    phi2 * acf_theoretical[k - 1]
+}
+
+acf_theoretical
+```
+
+## Gabungan data bangkitan dan teoritis
+
+
+### Manual
+```{r}
+# ACF data bangkitan
+acf_sample <- acf(
+  x_manual,
+  lag.max = 10,
+  plot = FALSE
+)
+
+# Parameter
+phi1 <- 0.5
+phi2 <- 0.2
+
+# Banyak lag
+lag_max <- 10
+
+# ACF teoritis
+acf_theoretical <- numeric(lag_max + 1)
+
+acf_theoretical[1] <- 1
+
+acf_theoretical[2] <-
+  phi1 / (1 - phi2)
+
+acf_theoretical[3] <-
+  phi1 * acf_theoretical[2] + phi2
+
+for (k in 3:lag_max) {
+  acf_theoretical[k + 1] <-
+    phi1 * acf_theoretical[k] +
+    phi2 * acf_theoretical[k - 1]
+}
+
+# Tabel perbandingan
+acf_comparison <- data.frame(
+  Lag = 1:10,
+  ACF_Bangkitan = as.numeric(acf_sample$acf)[2:11],
+  ACF_Teoritis = acf_theoretical[2:11]
+)
+
+acf_comparison
+```
+
+### `(arima,sim)`
+```{r}
+# ACF data bangkitan
+acf_sample1 <- acf(
+  x_arima,
+  lag.max = 10,
+  plot = FALSE
+)
+
+# Parameter
+phi1 <- 0.5
+phi2 <- 0.2
+
+# Banyak lag
+lag_max <- 10
+
+# ACF teoritis
+acf_theoretical <- numeric(lag_max + 1)
+
+acf_theoretical[1] <- 1
+
+acf_theoretical[2] <-
+  phi1 / (1 - phi2)
+
+acf_theoretical[3] <-
+  phi1 * acf_theoretical[2] + phi2
+
+for (k in 3:lag_max) {
+  acf_theoretical[k + 1] <-
+    phi1 * acf_theoretical[k] +
+    phi2 * acf_theoretical[k - 1]
+}
+
+# Tabel perbandingan
+acf_comparison_sim <- data.frame(
+  Lag = 1:10,
+  ACF_Bangkitan = as.numeric(acf_sample1$acf)[2:11],
+  ACF_Teoritis = acf_theoretical[2:11]
+)
+
+acf_comparison_sim
+```
+
